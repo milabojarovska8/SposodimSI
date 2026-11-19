@@ -15,7 +15,7 @@ export function niNajdeno(req, res) {
 }
 
 // Skupen middleware za napake
-export function obdelajNapako(err, req, res, next) {
+export function obdelajNapako(err, req, res, _next) {
   if (err instanceof ApiNapaka) {
     return res.status(err.status).json({
       napaka: { koda: err.koda, sporocilo: err.message },
