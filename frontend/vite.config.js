@@ -9,4 +9,15 @@ export default defineConfig({
       '/api': 'http://localhost:3000',
     },
   },
+  // Nastavitve za teste (Vitest) in poročilo o pokritosti kode
+  test: {
+    environment: 'node',
+    include: ['tests/**/*.test.js'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.js'],
+      reporter: ['text', 'lcov', 'html'],
+      reportsDirectory: 'coverage',
+    },
+  },
 })

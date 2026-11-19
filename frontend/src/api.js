@@ -1,5 +1,10 @@
+// Naslov API-ja se nastavi z okoljsko spremenljivko VITE_API_URL ob gradnji.
+// Privzeto je '/api': v razvoju zahteve posreduje Vite, v produkciji pa frontend
+// streže isti Express, ki teče na istem naslovu (ADR 0003).
+export const API_URL = import.meta.env.VITE_API_URL || '/api'
+
 export async function api(pot, moznosti = {}) {
-  const odgovor = await fetch('/api' + pot, {
+  const odgovor = await fetch(API_URL + pot, {
     ...moznosti,
     headers: { 'Content-Type': 'application/json', ...moznosti.headers },
   })

@@ -1,0 +1,158 @@
+name: CI/CD
+
+# Cevovod se zažene ob vsakem pull requestu v main in ob vsakem pushu v main.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: 22
+
+jobs:
+  # 1. Preverjanje sloga in kakovosti kode (ESLint) za backend in frontend
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          # Predpomnilnik npm (~/.npm) se obnovi glede na obe datoteki package-lock.json
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Namestitev odvisnosti backenda
+        run: npm ci
+        working-directory: backend
+
+      - name: Namestitev odvisnosti frontenda
+        run: npm ci
+        working-directory: frontend
+
+      - name: ESLint backend
+        run: npm run lint
+        working-directory: backend
+
+      - name: ESLint frontend
+        run: npm run lint
+        working-directory: frontend
+
+  # 2. Gradnja frontenda in priprava paketa aplikacije (artefakta)
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Gradnja frontenda
+        working-directory: frontend
+        env:
+          # Naslov backenda za frontend; privzeto /api, ker Express streže frontend na istem naslovu (ADR 0003)
+          VITE_API_URL: ${{ vars.VITE_API_URL || '/api' }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Produkcijske odvisnosti backenda
+        working-directory: backend
+        run: npm ci --omit=dev
+
+      - name: Sestavljanje paketa aplikacije
+        run: |
+          mkdir -p app
+          cp -r backend/src backend/db backend/node_modules backend/package.json backend/package-lock.json app/
+          cp -r frontend/dist app/public
+          if [ -f deploy/Dockerfile ]; then cp deploy/Dockerfile app/Dockerfile; fi
+
+      - name: Shrani zgrajeni frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+      - name: Shrani paket aplikacije
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-package
+          path: app
+          retention-days: 7
+
+  # 3. Testi backenda (s pravo bazo PostgreSQL) in frontenda ter poročilo o pokritosti kode
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: sposodimsi
+          POSTGRES_PASSWORD: sposodimsi
+          POSTGRES_DB: sposodimsi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sposodimsi"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://sposodimsi:sposodimsi@localhost:5432/sposodimsi
+      SESSION_SECRET: samo-za-teste
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Priprava testne baze (shema, testni podatki, sprožilec)
+        env:
+          PGPASSWORD: sposodimsi
+        run: |
+          for f in backend/db/*.sql; do
+            psql -h localhost -U sposodimsi -d sposodimsi -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Testi backenda s pokritostjo
+        working-directory: backend
+        run: |
+          npm ci
+          npm run test:coverage
+
+      - name: Testi frontenda s pokritostjo
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run test:coverage
+
+      - name: Shrani poročilo o pokritosti kode
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            backend/coverage
+            frontend/coverage
+          retention-days: 7
