@@ -156,3 +156,60 @@ jobs:
             backend/coverage
             frontend/coverage
           retention-days: 7
+
+  # 4. Namestitev v produkcijo: samo ob pushu v main in samo, če so lint, build in test uspeli.
+  #    Uporabi paket aplikacije iz joba "build" (aplikacije ne gradi znova), ga zapakira v
+  #    Docker sliko, jo objavi v GitHub Container Registry in sproži namestitev na Renderju.
+  deploy:
+    name: deploy
+    needs: [lint, build, test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ vars.APP_URL }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Prenos paketa aplikacije iz joba build
+        uses: actions/download-artifact@v4
+        with:
+          name: app-package
+          path: app
+
+      - name: Ime Docker slike
+        id: slika
+        run: |
+          repo="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "ime=${repo}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "latest=${repo}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Prijava v GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Objava slike (le kopiranje artefakta, brez ponovne gradnje aplikacije)
+        working-directory: app
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}" \
+            -t "${{ steps.slika.outputs.ime }}" -t "${{ steps.slika.outputs.latest }}" .
+          docker push "${{ steps.slika.outputs.ime }}"
+          docker push "${{ steps.slika.outputs.latest }}"
+
+      - name: Namestitev na Render
+        env:
+          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+          SLIKA: ${{ steps.slika.outputs.ime }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
+            echo "::warning::Skrivnost RENDER_DEPLOY_HOOK_URL ni nastavljena, zato je bila slika le objavljena. Dodaj jo v okolje production."
+            exit 0
+          fi
+          slika_url=$(python3 -c 'import os, urllib.parse; print(urllib.parse.quote(os.environ["SLIKA"], safe=""))')
+          curl -fsS -X POST "${RENDER_DEPLOY_HOOK_URL}&imgURL=${slika_url}" > /dev/null
+          echo "Namestitev slike ${SLIKA} je sprožena na Renderju."
