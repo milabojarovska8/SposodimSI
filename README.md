@@ -2,7 +2,7 @@
 
 [![CI/CD](https://github.com/milabojarovska8/SposodimSI/actions/workflows/ci-cd.yml/badge.svg?branch=main)](https://github.com/milabojarovska8/SposodimSI/actions/workflows/ci-cd.yml)
 
-**Nameščena aplikacija:** _povezava bo dodana po prvi namestitvi_
+**Nameščena aplikacija:** https://sposodimsi.onrender.com
 
 Spletna aplikacija za upravljanje izposoje opreme v študentskih klubih, laboratorijih in društvih. Nadomešča Excelove tabele in neformalne dogovore: člani rezervirajo opremo za izbrani termin, skrbnik zahtevke odobri, opremo izda in prevzame ter zapiše njeno stanje, sistem pa preprečuje podvojene rezervacije in označuje zamude.
 

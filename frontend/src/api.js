@@ -19,4 +19,6 @@ export async function api(pot, moznosti = {}) {
   }
 
   return telo
+  
 }
+const neuporabljenaSpremenljivka = 1
