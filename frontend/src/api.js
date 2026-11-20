@@ -19,4 +19,5 @@ export async function api(pot, moznosti = {}) {
   }
 
   return telo
+  
 }
